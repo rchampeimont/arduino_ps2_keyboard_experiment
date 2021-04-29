@@ -31,7 +31,7 @@ const byte KEYBOARD_INTERRUPT_DELTA_ARRAY_SIZE = 15;
 volatile byte keyboardInterruptDeltas[KEYBOARD_INTERRUPT_DELTA_ARRAY_SIZE];
 
 
-const byte KEYBOARD_BUFFER_SIZE = 10;
+const byte KEYBOARD_BUFFER_SIZE = 8;
 volatile byte keyboardBuffer[KEYBOARD_BUFFER_SIZE];
 volatile byte keyboardBufferIndex = 0;
 volatile byte keyboardErrorStatus = 0;
@@ -49,7 +49,7 @@ void processKeyboardInterrupt() {
   if (keyboardInterruptDeltasIndex >= KEYBOARD_INTERRUPT_DELTA_ARRAY_SIZE) {
     keyboardInterruptDeltasIndex = 0;
   }
-  
+
   byte data = digitalRead(PS2_KEYBOARD_DATA_PIN);
 
   // If a long time occured since the last 11-bit sequence, reset to reading a new value.
@@ -127,7 +127,7 @@ const char *getKeyboardError() {
       return "PARITY was incorrect";
     case 0:
       return "no error";
-     default:
+    default:
       return "unknown error";
   }
 }
@@ -143,56 +143,63 @@ void processKeyboard11BitCode(int keycode) {
 
 void reportKeyboardError() {
   // print debug information to serial
-    Serial.print("Keyboard error: ");
-    Serial.write(getKeyboardError());
-    Serial.println("");
-    Serial.println("Latest keyboard interrupt timing deltas in microseconds (most recent first):");
-    for (int i = 1; i <= KEYBOARD_INTERRUPT_DELTA_ARRAY_SIZE; i++) {
-      int delta = keyboardInterruptDeltas[(keyboardInterruptDeltasIndex - i + KEYBOARD_INTERRUPT_DELTA_ARRAY_SIZE) % KEYBOARD_INTERRUPT_DELTA_ARRAY_SIZE];
-      if (delta == 255) {
-        // we store any value >= 255 as 255
-        Serial.print(">254");
-      } else {
-        Serial.print(delta);
-      }
-      Serial.print(" ");
+  Serial.print("Keyboard error: ");
+  Serial.write(getKeyboardError());
+  Serial.println("");
+  Serial.println("Latest keyboard interrupt timing deltas in microseconds (most recent first):");
+  for (int i = 1; i <= KEYBOARD_INTERRUPT_DELTA_ARRAY_SIZE; i++) {
+    int delta = keyboardInterruptDeltas[(keyboardInterruptDeltasIndex - i + KEYBOARD_INTERRUPT_DELTA_ARRAY_SIZE) % KEYBOARD_INTERRUPT_DELTA_ARRAY_SIZE];
+    if (delta == 255) {
+      // we store any value >= 255 as 255
+      Serial.print(">254");
+    } else {
+      Serial.print(delta);
     }
-    Serial.println("");
-    Serial.print("Partially read key code: ");
-    Serial.println(incompleteKeycode, BIN);
-    Serial.println("");
+    Serial.print(" ");
+  }
+  Serial.println("");
+  Serial.print("Partially read key code: ");
+  Serial.println(incompleteKeycode, BIN);
+  Serial.println("");
 }
 
 void reportKeyboardRawData() {
   if (lastReportedKeyboardInterruptCounter != keyboardInterruptCounter) {
     lastReportedKeyboardInterruptCounter = keyboardInterruptCounter;
+
+    // display keyboard interrupt counter
     lcd.home();
-    lcd.print("      ");
+    // clear line
+    //        "irXXX bitXX"
+    lcd.print("           ");
     lcd.home();
     lcd.print("ir");
     lcd.print(keyboardInterruptCounter);
 
-    lcd.setCursor(0, 1);
-    lcd.print("           ");
-    lcd.setCursor(0, 1);
-    lcd.print("bit");
+    // display next expected bit in 0-10
+    lcd.print(" bit");
     lcd.print(keyboardBitCounter);
-    lcd.print(" idx");
-    lcd.print(keyboardBufferIndex);
-    lcd.setCursor(LCD_COLS - 1, 1);
+
+    // display error status
+    lcd.setCursor(LCD_COLS - 1, 0);
     lcd.write(keyboardErrorStatus ? keyboardErrorStatus : '_');
 
-    lcd.setCursor(LCD_COLS - KEYBOARD_BUFFER_SIZE, 0);
+    // display latest bytes received in buffer
+    lcd.setCursor(0, 1);
     for (int i = 1; i <= KEYBOARD_BUFFER_SIZE; i++) {
-      lcd.write(keyboardBuffer[(keyboardBufferIndex - i + KEYBOARD_BUFFER_SIZE) % KEYBOARD_BUFFER_SIZE] - 0x1C + 'A');
+      byte value = keyboardBuffer[(keyboardBufferIndex - i + KEYBOARD_BUFFER_SIZE) % KEYBOARD_BUFFER_SIZE];
+      lcd.print(value >> 4, HEX);
+      lcd.print(value & 0xf, HEX);
     }
 
+    // print last bytes received on serial in hex
     for (int i = 1; i <= KEYBOARD_BUFFER_SIZE; i++) {
       Serial.print(keyboardBuffer[(keyboardBufferIndex - i + KEYBOARD_BUFFER_SIZE) % KEYBOARD_BUFFER_SIZE], HEX);
       Serial.print(" ");
     }
     Serial.println("");
 
+    // print last bytes received on serial in binary
     for (int i = 1; i <= KEYBOARD_BUFFER_SIZE; i++) {
       Serial.print(keyboardBuffer[(keyboardBufferIndex - i + KEYBOARD_BUFFER_SIZE) % KEYBOARD_BUFFER_SIZE], BIN);
       Serial.print(" ");
