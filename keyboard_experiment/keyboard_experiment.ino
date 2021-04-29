@@ -27,7 +27,7 @@ volatile byte incompleteKeycode = 0;
 
 volatile unsigned long lastKeyboardIntrruptTime = 0;
 volatile byte keyboardInterruptDeltasIndex = 0;
-const byte KEYBOARD_INTERRUPT_DELTA_ARRAY_SIZE = 20;
+const byte KEYBOARD_INTERRUPT_DELTA_ARRAY_SIZE = 15;
 volatile byte keyboardInterruptDeltas[KEYBOARD_INTERRUPT_DELTA_ARRAY_SIZE];
 
 
@@ -36,7 +36,7 @@ volatile byte keyboardBuffer[KEYBOARD_BUFFER_SIZE];
 volatile byte keyboardBufferIndex = 0;
 volatile byte keyboardErrorStatus = 0;
 
-
+const long AUTOMATIC_RESET_AFTER = 200; // microseconds
 
 
 
@@ -54,7 +54,7 @@ void processKeyboardInterrupt() {
 
   // If a long time occured since the last 11-bit sequence, reset to reading a new value.
   // This allows us to get out of a dead end if an extraneous or missing bit was transmitted previously.
-  if (delta > 1000000) {
+  if (delta > AUTOMATIC_RESET_AFTER) {
     incompleteKeycode = 0;
     keyboardBitCounter = 0;
     keyboardErrorStatus = 0;
@@ -67,6 +67,7 @@ void processKeyboardInterrupt() {
     if (data != 0) {
       // invalid start bit, it should be 0
       keyboardErrorStatus = 'S';
+      reportKeyboardError();
     }
   } else if (keyboardBitCounter > 0 && keyboardBitCounter < 9) {
     // data bit: least significant bit is received first.
@@ -81,6 +82,7 @@ void processKeyboardInterrupt() {
     if (parity % 2 != 1 && !keyboardErrorStatus) {
       // incorrect parity
       keyboardErrorStatus = 'P';
+      reportKeyboardError();
     }
   }
 
@@ -89,13 +91,15 @@ void processKeyboardInterrupt() {
     if (data != 1 && !keyboardErrorStatus) {
       // invalid end bit: it should be 1
       keyboardErrorStatus = 'E';
+      reportKeyboardError();
     }
     // All 11 bits have been received.
     if (! keyboardErrorStatus) {
       // process received byte if every check passed
       processKeyboard11BitCode(incompleteKeycode);
-      incompleteKeycode = 0;
     }
+    // Reset to read next 11-bit chunk
+    incompleteKeycode = 0;
     keyboardBitCounter = 0;
   } else {
     keyboardBitCounter++;
@@ -103,14 +107,13 @@ void processKeyboardInterrupt() {
 
   keyboardInterruptCounter++;
 
-  // This prevents reading extra artefact bits:
+  // The delay prevents reading extra artefact bits.
+  // We could do without it at the price of a few errors once in a while (like 1% of reads).
   // Tested values:
-  // 1 produces frequent errors
-  // 10-25 avoids most errors but can sometimes fail
-  // 50 avoid all errors
-  // >60 cannot be correct because clock speed is 10.0 to 16.7 kHz = 100 to 60 microsecs period
-  // 60 works on my keyboard but it is not guaranted by standard
-  // 100 fails because it we miss bits
+  // (my test keyboard has a clock period of around 90 usec, standard says it is between 60 and 100)
+  // <=25 avoids most errors but can sometimes fail
+  // 30-70 avoid all errors
+  // >=80 fails because it we miss bits
   //delayMicroseconds(50);
 }
 
@@ -136,6 +139,28 @@ void processKeyboard11BitCode(int keycode) {
   if (keyboardBufferIndex >= KEYBOARD_BUFFER_SIZE) {
     keyboardBufferIndex = 0;
   }
+}
+
+void reportKeyboardError() {
+  // print debug information to serial
+    Serial.print("Keyboard error: ");
+    Serial.write(getKeyboardError());
+    Serial.println("");
+    Serial.println("Latest keyboard interrupt timing deltas in microseconds (most recent first):");
+    for (int i = 1; i <= KEYBOARD_INTERRUPT_DELTA_ARRAY_SIZE; i++) {
+      int delta = keyboardInterruptDeltas[(keyboardInterruptDeltasIndex - i + KEYBOARD_INTERRUPT_DELTA_ARRAY_SIZE) % KEYBOARD_INTERRUPT_DELTA_ARRAY_SIZE];
+      if (delta == 255) {
+        // we store any value >= 255 as 255
+        Serial.print(">254");
+      } else {
+        Serial.print(delta);
+      }
+      Serial.print(" ");
+    }
+    Serial.println("");
+    Serial.print("Partially read key code: ");
+    Serial.println(incompleteKeycode, BIN);
+    Serial.println("");
 }
 
 void reportKeyboardRawData() {
@@ -173,28 +198,6 @@ void reportKeyboardRawData() {
       Serial.print(" ");
     }
     Serial.println("");
-
-    if (keyboardErrorStatus) {
-      // print debug information to serial
-      Serial.print("Keyboard error: ");
-      Serial.write(getKeyboardError());
-      Serial.println("");
-      Serial.println("Keyboard interrupt timing deltas in usec (most recent first):");
-      for (int i = 1; i <= KEYBOARD_INTERRUPT_DELTA_ARRAY_SIZE; i++) {
-        int delta = keyboardInterruptDeltas[(keyboardInterruptDeltasIndex - i + KEYBOARD_INTERRUPT_DELTA_ARRAY_SIZE) % KEYBOARD_INTERRUPT_DELTA_ARRAY_SIZE];
-        Serial.print(delta);
-        if (delta == 255) {
-          // we store any value >= 255 as 255
-          Serial.print("+ ");
-        } else {
-          Serial.print(" ");
-        }
-      }
-      Serial.println("");
-      Serial.print("Partially read key code: ");
-      Serial.println(incompleteKeycode, BIN);
-      Serial.println("");
-    }
   }
 }
 
