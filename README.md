@@ -8,4 +8,4 @@ Zoom on the circuit:
 ![Circuit and page 1](/screenshots/circuit.jpg?raw=true)
 
 What the output looks like when we press some keys:
-![Circuit and page 1](/screenshots/example_of_output.jpg?raw=true)
+![Circuit and page 1](/screenshots/example_of_output_v2.jpg?raw=true)
