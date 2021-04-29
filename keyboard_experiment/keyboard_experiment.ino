@@ -221,10 +221,6 @@ void setup() {
   pinMode(PS2_KEYBOARD_DATA_PIN, INPUT);
   attachInterrupt(digitalPinToInterrupt(PS2_KEYBOARD_CLOCK_PIN), processKeyboardInterrupt, FALLING);
 
-  // other stuff for fun and debug
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
-
   // for debug
   Serial.begin(9600);
 
